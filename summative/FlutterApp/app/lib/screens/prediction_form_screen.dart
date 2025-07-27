@@ -24,8 +24,8 @@ class _PredictionFormScreenState extends State<PredictionFormScreen> {
 
   Future<void> _predictDelay() async {
     final uri = Uri.parse(
-      'https://your-api-url.onrender.com/predict',
-    ); // Replace this with your Render URL
+      'https://flight-delay-api-a0oq.onrender.com/predict',
+    ); // Updated with correct endpoint
 
     // One-hot encoding
     Map<String, int> airlineMap = {
@@ -44,9 +44,9 @@ class _PredictionFormScreenState extends State<PredictionFormScreen> {
     };
 
     final body = {
-      'ScheduledHour': scheduledHour,
-      'ActualHour': actualHour,
-      'DepartureDelta': delta,
+      'scheduled_time': scheduledHour,          // Updated field name
+      'actual_time': actualHour,                // Updated field name  
+      'departure_delay_minutes': delta.toDouble(), // Updated field name
       ...airlineMap,
       ...originMap,
       ...destMap,
@@ -66,7 +66,10 @@ class _PredictionFormScreenState extends State<PredictionFormScreen> {
           MaterialPageRoute(
             builder:
                 (context) =>
-                    ResultScreen(result: result['PredictedDelayMinutes']),
+                    ResultScreen(
+                      result: result['predicted_delay_minutes'],
+                      interpretation: result['interpretation'],
+                    ),
           ),
         );
       } else {
