@@ -10,7 +10,11 @@ import pandas as pd
 model = joblib.load("best_model.pkl")
 scaler = joblib.load("scaler.pkl")
 
-app = FastAPI()
+app = FastAPI(
+    title="African Flight Delay Prediction API",
+    description="Predict flight delays for African airlines based on departure information",
+    version="1.0.0"
+)
 
 # Allow CORS (for Flutter app access)
 app.add_middleware(
@@ -23,9 +27,16 @@ app.add_middleware(
 
 # Pydantic model with data types and range constraints
 class FlightInput(BaseModel):
-    ScheduledHour: int = Field(..., ge=0, le=23)
-    ActualHour: int = Field(..., ge=0, le=23)
-    DepartureDelta: float
+    scheduled_hour: int = Field(..., ge=0, le=23, description="Scheduled departure hour (0-23)", example=14)
+    actual_hour: int = Field(..., ge=0, le=23, description="Actual departure hour (0-23)", example=14)
+    departure_delay_minutes: float = Field(
+        ..., 
+        ge=-30, 
+        le=90, 
+        description="Departure delay in minutes (positive = late, negative = early, 0 = on-time)",
+        example=15,
+        alias="DepartureDelta"
+    )
 
     # African Airlines (optional, defaults to 0)
     Airline_Airlink: int = Field(0, ge=0, le=1)
@@ -63,9 +74,9 @@ class FlightInput(BaseModel):
     class Config:
         validate_by_name = True
 
-# Feature columns (must match model input order)
+# Feature columns (must match model input order) - using original names for model compatibility
 FEATURE_COLUMNS = [
-    'ScheduledHour', 'ActualHour', 'DepartureDelta',
+    'ScheduledHour', 'ActualHour', 'DepartureDelta',  # Keep original names for model
     'Airline_Airlink', 'Airline_EgyptAir', 'Airline_Ethiopian Airlines', 'Airline_FlySafair', 
     'Airline_Kenya Airways', 'Airline_Royal Air Maroc', 'Airline_RwandAir', 
     'Airline_South African Airways', 'Airline_Tunisair',
@@ -77,9 +88,40 @@ FEATURE_COLUMNS = [
 
 @app.post("/predict")
 def predict_delay(data: FlightInput):
+    """
+    Predict flight delay based on departure information and flight details.
+    
+    - **scheduled_hour**: Hour of scheduled departure (0-23)
+    - **actual_hour**: Hour of actual departure (0-23) 
+    - **departure_delay_minutes**: How many minutes delayed (+ late, - early, 0 on-time)
+    - **Airlines & Airports**: Set appropriate flags to 1, others to 0
+    
+    Returns predicted delay in minutes.
+    """
     try:
-        # Convert input to DataFrame
-        input_df = pd.DataFrame([data.dict()])
+        # Convert input to DataFrame with original column names for model compatibility
+        input_dict = data.dict(by_alias=True)  # Use alias names (original names)
+        
+        # Map user-friendly names to original model names
+        model_input = {
+            'ScheduledHour': input_dict.get('scheduled_hour', data.scheduled_hour),
+            'ActualHour': input_dict.get('actual_hour', data.actual_hour),
+            'DepartureDelta': input_dict.get('DepartureDelta', data.departure_delay_minutes)
+        }
+        
+        # Add airline/airport flags
+        for key, value in input_dict.items():
+            if key.startswith(('Airline_', 'Origin_', 'Destination_')):
+                model_input[key] = value
+        
+        input_df = pd.DataFrame([model_input])
+        
+        # Ensure all columns are present (especially one-hot encoded)
+        for col in FEATURE_COLUMNS:
+            if col not in input_df.columns:
+                input_df[col] = 0
+        
+        # Reorder columns to match model training
         input_df = input_df[FEATURE_COLUMNS]
 
         # Scale features
@@ -87,10 +129,54 @@ def predict_delay(data: FlightInput):
 
         # Predict delay
         prediction = model.predict(scaled)[0]
-        return {"predicted_delay_minutes": round(float(prediction), 2)}
+        return {
+            "predicted_delay_minutes": round(float(prediction), 2),
+            "interpretation": get_delay_interpretation(prediction)
+        }
 
     except Exception as e:
         return {"error": str(e)}
+
+def get_delay_interpretation(delay_minutes):
+    """Provide human-readable interpretation of delay prediction"""
+    if delay_minutes <= -5:
+        return f"Flight predicted to depart {abs(delay_minutes):.0f} minutes early"
+    elif delay_minutes < 0:
+        return "Flight predicted to depart slightly early"
+    elif delay_minutes == 0:
+        return "Flight predicted to depart on time"
+    elif delay_minutes <= 15:
+        return f"Flight predicted to have minor delay of {delay_minutes:.0f} minutes"
+    elif delay_minutes <= 30:
+        return f"Flight predicted to have moderate delay of {delay_minutes:.0f} minutes"
+    else:
+        return f"Flight predicted to have significant delay of {delay_minutes:.0f} minutes"
+
+@app.get("/")
+def read_root():
+    return {
+        "message": "African Flight Delay Prediction API",
+        "description": "Use /predict endpoint to predict flight delays",
+        "documentation": "/docs",
+        "version": "1.0.0"
+    }
+
+@app.get("/airlines")
+def get_supported_airlines():
+    """Get list of supported airlines"""
+    airlines = [col.replace('Airline_', '') for col in FEATURE_COLUMNS if col.startswith('Airline_')]
+    return {"supported_airlines": airlines}
+
+@app.get("/airports")
+def get_supported_airports():
+    """Get list of supported airports (origins and destinations)"""
+    origins = [col.replace('Origin_', '') for col in FEATURE_COLUMNS if col.startswith('Origin_')]
+    destinations = [col.replace('Destination_', '') for col in FEATURE_COLUMNS if col.startswith('Destination_')]
+    return {
+        "supported_origins": origins,
+        "supported_destinations": destinations
+    }
+
 # Run the app with: uvicorn prediction:app --reload
 # Ensure you have the model and scaler files in the same directory as this script.
 # To run the FastAPI app, use the command:
