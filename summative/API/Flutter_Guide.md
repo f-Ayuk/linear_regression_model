@@ -10,8 +10,8 @@
 The API now uses intuitive field names instead of technical terms:
 
 ### Required Fields:
-- `scheduled_hour` (0-23): What hour was the flight scheduled to depart?
-- `actual_hour` (0-23): What hour did the flight actually depart?
+- `scheduled_time` (0-23): What hour was the flight scheduled to depart?
+- `actual_time` (0-23): What hour did the flight actually depart?
 - `departure_delay_minutes` (-30 to 90): How many minutes late/early was departure?
   - **Positive numbers** = Late (e.g., 15 = 15 minutes late)
   - **Negative numbers** = Early (e.g., -5 = 5 minutes early)  
@@ -42,8 +42,8 @@ class FlightDelayService {
   static const String baseUrl = 'http://127.0.0.1:8001';
   
   Future<Map<String, dynamic>> predictDelay({
-    required int scheduledHour,
-    required int actualHour,
+    required int scheduledTime,
+    required int actualTime,
     required double departureDelayMinutes,
     String? airline,
     String? origin,
@@ -51,8 +51,8 @@ class FlightDelayService {
   }) async {
     
     Map<String, dynamic> requestBody = {
-      'scheduled_hour': scheduledHour,
-      'actual_hour': actualHour,
+      'scheduled_time': scheduledTime,
+      'actual_time': actualTime,
       'departure_delay_minutes': departureDelayMinutes,
     };
     
@@ -71,8 +71,21 @@ class FlightDelayService {
 }
 ```
 
-## Sample API Response
+## Sample API Test
 
+### Request:
+```json
+{
+  "scheduled_time": 14,
+  "actual_time": 14,
+  "departure_delay_minutes": 15,
+  "Airline_Kenya_Airways": 1,
+  "Origin_NBO": 1,
+  "Destination_JNB": 1
+}
+```
+
+### Response:
 ```json
 {
   "predicted_delay_minutes": 25.67,

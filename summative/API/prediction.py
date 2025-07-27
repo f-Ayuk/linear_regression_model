@@ -27,8 +27,8 @@ app.add_middleware(
 
 # Pydantic model with data types and range constraints
 class FlightInput(BaseModel):
-    scheduled_hour: int = Field(..., ge=0, le=23, description="Scheduled departure hour (0-23)", example=14)
-    actual_hour: int = Field(..., ge=0, le=23, description="Actual departure hour (0-23)", example=14)
+    scheduled_time: int = Field(..., ge=0, le=23, description="Scheduled departure time (hour 0-23)", example=14)
+    actual_time: int = Field(..., ge=0, le=23, description="Actual departure time (hour 0-23)", example=14)
     departure_delay_minutes: float = Field(
         ..., 
         ge=-30, 
@@ -91,8 +91,8 @@ def predict_delay(data: FlightInput):
     """
     Predict flight delay based on departure information and flight details.
     
-    - **scheduled_hour**: Hour of scheduled departure (0-23)
-    - **actual_hour**: Hour of actual departure (0-23) 
+    - **scheduled_time**: Hour of scheduled departure (0-23)
+    - **actual_time**: Hour of actual departure (0-23) 
     - **departure_delay_minutes**: How many minutes delayed (+ late, - early, 0 on-time)
     - **Airlines & Airports**: Set appropriate flags to 1, others to 0
     
@@ -104,8 +104,8 @@ def predict_delay(data: FlightInput):
         
         # Map user-friendly names to original model names
         model_input = {
-            'ScheduledHour': input_dict.get('scheduled_hour', data.scheduled_hour),
-            'ActualHour': input_dict.get('actual_hour', data.actual_hour),
+            'ScheduledHour': input_dict.get('scheduled_time', data.scheduled_time),
+            'ActualHour': input_dict.get('actual_time', data.actual_time),
             'DepartureDelta': input_dict.get('DepartureDelta', data.departure_delay_minutes)
         }
         
