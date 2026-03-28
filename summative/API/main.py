@@ -10,7 +10,7 @@ app = FastAPI(title="Flight Delay API")
 # ✅ CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,24 +23,21 @@ features = joblib.load("features.pkl")
 
 # ✅ Input schema (ONLY 5 FEATURES)
 class FlightInput(BaseModel):
-    CRSDepTime: int = Field(..., ge=0, le=2359)
-    DayOfWeek: int = Field(..., ge=1, le=7)
-    Airline: str
-    Origin: str
-    Dest: str
+    CRSDepTime: int = Field(..., ge=0, le=2359)  # Departure time (HHMM)
+    DayOfWeek: int = Field(..., ge=1, le=7)  # Day of the week (1-7)
+    Airline: str  # Airline code
+    Origin: str  # Origin airport code
+    Dest: str  # Destination airport code
 
-# ✅ Convert user input → model format
+# ✅ Helper function to prepare input data for prediction
 def prepare_input(data: FlightInput):
     input_dict = {feature: 0 for feature in features}
 
-    # Core features
     input_dict["CRSDepTime"] = data.CRSDepTime
     input_dict["DayOfWeek"] = data.DayOfWeek
+    input_dict["dep_hour"] = data.CRSDepTime // 100  # Extract hour from CRSDepTime
 
-    # Derived feature
-    input_dict["dep_hour"] = data.CRSDepTime // 100
-
-    # One-hot encoding
+    # One-hot encoding for categorical variables
     airline_col = f"Airline_{data.Airline}"
     origin_col = f"Origin_{data.Origin}"
     dest_col = f"Dest_{data.Dest}"
@@ -56,7 +53,7 @@ def prepare_input(data: FlightInput):
 
     return np.array(list(input_dict.values())).reshape(1, -1)
 
-# ✅ Prediction endpoint
+# ✅ Prediction endpoint (POST /predict)
 @app.post("/predict")
 def predict(data: FlightInput):
     try:
@@ -64,7 +61,7 @@ def predict(data: FlightInput):
         input_scaled = scaler.transform(input_array)
         prediction = model.predict(input_scaled)[0]
 
-        # Optional interpretation
+        # Optional interpretation based on prediction
         if prediction < 0:
             status = "Early"
         elif prediction < 15:
@@ -76,11 +73,10 @@ def predict(data: FlightInput):
             "delay_minutes": round(float(prediction), 2),
             "status": status
         }
-
     except Exception as e:
         return {"error": str(e)}
 
-# ✅ Retrain endpoint (simple placeholder)
+# ✅ Retrain endpoint (just as a placeholder for now)
 @app.post("/retrain")
 def retrain():
     return {"message": "Retraining endpoint ready (connect to training script)"}
