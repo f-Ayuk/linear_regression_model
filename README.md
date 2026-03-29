@@ -77,7 +77,7 @@ Access the Swagger UI documentation at: `https://flight-delay-predict-vyo2.onren
 ```
 
 ## Video Demo
-🎥 **YouTube Demo**: [Flight Delay Prediction System Demo](https://www.loom.com/share/9095ddeecfd640b3974bbe0fa42f43ef)
+🎥 **YouTube Demo**: [Flight Delay Prediction System Demo]
 *(5-minute demonstration of the complete system including mobile app and API usage)*
 
 ## Mobile App Setup Instructions
