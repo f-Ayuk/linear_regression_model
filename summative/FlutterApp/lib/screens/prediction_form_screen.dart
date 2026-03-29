@@ -24,7 +24,7 @@ class _PredictionFormScreenState extends State<PredictionFormScreen> {
 
   String result = "";
 
-  final String baseUrl = "https://your-api-name.onrender.com";
+  final String baseUrl = "https://flight-delay-predict-vyo2.onrender.com";
 
   @override
   void initState() {
