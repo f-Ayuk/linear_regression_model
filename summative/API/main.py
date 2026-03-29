@@ -1,25 +1,31 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import numpy as np
 import joblib
 
-from fastapi.middleware.cors import CORSMiddleware
-
 app = FastAPI(title="Flight Delay API")
 
 # ✅ CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+try:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allow all origins
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+except Exception as e:
+    print(f"Warning: CORS middleware setup failed: {e}")
 
 # ✅ Load model files
-model = joblib.load("best_flight_delay_model.pkl")
-scaler = joblib.load("scaler.pkl")
-features = joblib.load("features.pkl")
+try:
+    model = joblib.load("best_flight_delay_model.pkl")
+    scaler = joblib.load("scaler.pkl")
+    features = joblib.load("features.pkl")
+    print("Model, scaler, and features loaded successfully.")
+except Exception as e:
+    print(f"Error loading model files: {e}")
 
 # ✅ Input schema (ONLY 5 FEATURES)
 class FlightInput(BaseModel):

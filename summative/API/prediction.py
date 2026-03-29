@@ -3,50 +3,70 @@ from pydantic import BaseModel, Field
 import numpy as np
 import joblib
 import pandas as pd
+import os
 
 from fastapi.middleware.cors import CORSMiddleware
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import SGDRegressor
 
 app = FastAPI(title="Flight Delay Prediction API")
 
-# ✅ CORS (not wildcard for grading)
+# ✅ CORS (allow all for Flutter + Render)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Local development URL for Flutter frontend
-        "http://127.0.0.1:3000"   # Localhost URL for Flutter frontend
-    ],
+    allow_origins=["*"],  # IMPORTANT FIX
     allow_credentials=True,
-    allow_methods=["POST", "GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ Load artifacts (model, scaler, feature list)
-model = joblib.load("best_flight_delay_model.pkl")
-scaler = joblib.load("scaler.pkl")
-features = joblib.load("features.pkl")
+# ✅ Debug helper
+def safe_load(path, default):
+    try:
+        if os.path.exists(path):
+            return joblib.load(path)
+        else:
+            print(f"File not found: {path}")
+            return default
+    except Exception as e:
+        print(f"Error loading {path}: {e}")
+        return default
 
-# Dropdown data - for options (these should be pre-saved as pickle files)
-airlines = joblib.load("data/airlines.pkl")
-origins = joblib.load("data/origins.pkl")
-destinations = joblib.load("data/destinations.pkl")
+# ✅ Load model artifacts safely
+model = safe_load("best_flight_delay_model.pkl", None)
+scaler = safe_load("scaler.pkl", None)
+features = safe_load("features.pkl", [])
 
-# ✅ Input schema with constraints
+# ✅ Load dropdown data safely
+airlines = safe_load("data/airlines.pkl", ["AA", "DL", "UA"])
+origins = safe_load("data/origins.pkl", ["JFK", "LAX"])
+destinations = safe_load("data/destinations.pkl", ["ORD", "ATL"])
+
+# ✅ Root endpoint (for testing API health)
+@app.get("/")
+def home():
+    return {"message": "API is running successfully"}
+
+# ✅ Input schema
 class FlightInput(BaseModel):
-    CRSDepTime: int = Field(..., ge=0, le=2359)  # Departure time in HHMM format
-    DayOfWeek: int = Field(..., ge=1, le=7)  # 1=Monday, 7=Sunday
-    Airline: str  # Airline code (must match one of the airline codes)
-    Origin: str  # Origin airport code (must match one of the origin codes)
-    Dest: str  # Destination airport code (must match one of the destination codes)
+    CRSDepTime: int = Field(..., ge=0, le=2359)
+    DayOfWeek: int = Field(..., ge=1, le=7)
+    Airline: str
+    Origin: str
+    Dest: str
 
-# ✅ Helper: Prepare input data for prediction
+# ✅ Prepare input
 def prepare_input(data: FlightInput):
+    if not features:
+        raise ValueError("Feature list is empty. Model not loaded properly.")
+
     input_dict = {feature: 0 for feature in features}
 
     input_dict["CRSDepTime"] = data.CRSDepTime
     input_dict["DayOfWeek"] = data.DayOfWeek
-    input_dict["dep_hour"] = data.CRSDepTime // 100  # Convert CRSDepTime to hour
+    input_dict["dep_hour"] = data.CRSDepTime // 100
 
-    # One-hot encoding for airline, origin, and destination
+    # One-hot encoding
     if f"Airline_{data.Airline}" in input_dict:
         input_dict[f"Airline_{data.Airline}"] = 1
 
@@ -58,60 +78,89 @@ def prepare_input(data: FlightInput):
 
     return np.array(list(input_dict.values())).reshape(1, -1)
 
-# ✅ Prediction endpoint (POST /predict)
+# ✅ Prediction endpoint
 @app.post("/predict")
 def predict(data: FlightInput):
-    input_array = prepare_input(data)
-    input_scaled = scaler.transform(input_array)
-    prediction = model.predict(input_scaled)[0]
+    try:
+        print("Incoming data:", data)
 
-    # Determine status based on the prediction
-    if prediction < 0:
-        status = "Early"
-    elif prediction < 15:
-        status = "On Time"
-    else:
-        status = "Delayed"
+        if model is None or scaler is None:
+            return {"error": "Model or scaler not loaded"}
 
-    return {
-        "delay_minutes": round(float(prediction), 2),
-        "status": status
-    }
+        input_array = prepare_input(data)
+        input_scaled = scaler.transform(input_array)
+        prediction = model.predict(input_scaled)[0]
 
-# ✅ Dropdown options endpoint (for Flutter to fetch airline, origin, and destination options)
+        # Status logic
+        if prediction < 0:
+            status = "Early"
+        elif prediction < 15:
+            status = "On Time"
+        else:
+            status = "Delayed"
+
+        print("Prediction:", prediction)
+
+        return {
+            "delay_minutes": round(float(prediction), 2),
+            "status": status
+        }
+
+    except Exception as e:
+        print("Prediction error:", e)
+        return {"error": str(e)}
+
+# ✅ OPTIONS endpoint (for Flutter dropdowns)
 @app.get("/options")
 def get_options():
-    return {
-        "airlines": airlines,
-        "origins": origins,
-        "destinations": destinations
-    }
+    try:
+        print("Sending dropdown data")
+        print("Airlines:", airlines)
+        print("Origins:", origins)
+        print("Destinations:", destinations)
 
-# ✅ Retrain model endpoint (POST /retrain)
+        return {
+            "airlines": airlines,
+            "origins": origins,
+            "destinations": destinations
+        }
+    except Exception as e:
+        print(f"Error in /options endpoint: {e}")
+        return {"error": "Failed to load options"}
+
+# ✅ Retrain endpoint
 @app.post("/retrain")
 def retrain(file: UploadFile = File(...)):
-    global model, scaler
+    global model, scaler, features
 
-    # Read the uploaded CSV file
-    df = pd.read_csv(file.file)
+    try:
+        df = pd.read_csv(file.file)
 
-    target = "ArrDelay"
-    df = df.dropna(subset=[target])  # Remove rows with missing target values
-    df = pd.get_dummies(df, drop_first=True)  # One-hot encode categorical variables
+        target = "ArrDelay"
+        df = df.dropna(subset=[target])
 
-    X = df.drop(columns=[target])
-    y = df[target]
+        # One-hot encode
+        df = pd.get_dummies(df, drop_first=True)
 
-    # Standardize the features
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+        X = df.drop(columns=[target])
+        y = df[target]
 
-    # Retrain the model
-    model = SGDRegressor(max_iter=1000)
-    model.fit(X_scaled, y)
+        # Save new feature list
+        features = list(X.columns)
 
-    # Save the updated model and scaler
-    joblib.dump(model, "best_flight_delay_model.pkl")
-    joblib.dump(scaler, "scaler.pkl")
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
 
-    return {"message": "Model retrained successfully"}
+        model = SGDRegressor(max_iter=1000)
+        model.fit(X_scaled, y)
+
+        # Save updated artifacts
+        joblib.dump(model, "best_flight_delay_model.pkl")
+        joblib.dump(scaler, "scaler.pkl")
+        joblib.dump(features, "features.pkl")
+
+        return {"message": "Model retrained successfully"}
+
+    except Exception as e:
+        print("Retrain error:", e)
+        return {"error": str(e)}
